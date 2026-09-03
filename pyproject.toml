@@ -1,0 +1,70 @@
+[project]
+name = "guardrail-model"
+version = "0.1.0"
+description = "Small LLM safety guardrail with PII masking via teacher distillation + SFT + DPO"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+
+# ── Core runtime dependencies ──────────────────────────────────────────────────
+dependencies = [
+    # Deep learning framework
+    "torch>=2.3.0",
+
+    # Hugging Face ecosystem
+    "transformers>=4.43.0",    # model loading, tokenizer
+    "trl>=0.9.0",              # SFTTrainer, DPOTrainer
+    "peft>=0.12.0",            # LoRA / QLoRA adapters
+    "datasets>=2.20.0",        # JSONL dataset loading
+    "accelerate>=0.31.0",      # mixed precision, multi-GPU
+    "sentencepiece>=0.2.0",    # tokenizer backend for Qwen
+
+    # 4-bit quantization
+    "bitsandbytes>=0.43.0",
+
+    # Config file parsing
+    "pyyaml>=6.0.1",
+]
+
+# ── Optional dependency groups ─────────────────────────────────────────────────
+[project.optional-dependencies]
+
+# Development tools
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.5.0",             # linting + formatting
+    "ipykernel>=6.29.0",       # Jupyter support
+]
+
+# Teacher API clients — only needed for data generation
+data = [
+    "openai>=1.35.0",
+    "anthropic>=0.30.0",
+    "google-generativeai>=0.7.0",
+    "aiohttp>=3.9.0",          # async batching for API calls
+    "tenacity>=8.3.0",         # retry logic for API rate limits
+]
+
+# Production API — Phase 2
+api = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+]
+
+# ── Build system ───────────────────────────────────────────────────────────────
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ── Ruff linter + formatter config ────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]   # pycodestyle, pyflakes, isort
+
+# ── Pytest config ─────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

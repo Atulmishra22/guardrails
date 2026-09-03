@@ -1,0 +1,37 @@
+# ── Model checkpoints (gigabytes — never commit these) ────────────────────────
+models/
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+
+# ── Data — raw API responses and generated datasets ───────────────────────────
+data/raw/
+data/generated/
+data/processed/
+data/preferences/
+# NOTE: data/evaluation/ IS committed (sealed eval set is version-controlled)
+
+# ── Environment and secrets ───────────────────────────────────────────────────
+.env
+.env.*
+*.key
+
+# ── Python cache ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# ── Jupyter checkpoints ───────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── uv virtual environment ────────────────────────────────────────────────────
+.venv/
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
