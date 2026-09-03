@@ -1,0 +1,58 @@
+# ── dpo.yaml ──────────────────────────────────────────────────────────────────
+# Controls Direct Preference Optimization (DPO) — the second training stage.
+# Run this ONLY after guardrail-v1 (SFT) is trained and evaluated.
+# Concept explained in: docs/03_dpo_explained.md
+
+# ── Model — start from the SFT checkpoint, not the base model ─────────────────
+model:
+  sft_checkpoint: "models/guardrail-v1-sft"   # Starting point for DPO
+  output_dir:     "models/guardrail-v2-dpo"
+
+# ── LoRA config for DPO ───────────────────────────────────────────────────────
+# Keep the same LoRA config as SFT so adapter shapes match.
+lora:
+  r:            16
+  lora_alpha:   32
+  lora_dropout: 0.05
+  bias:         "none"
+  task_type:    "CAUSAL_LM"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+# ── DPO-specific parameters ───────────────────────────────────────────────────
+dpo:
+  beta: 0.1
+  # beta controls how strongly DPO penalizes deviation from the reference model.
+  # Low beta (0.05–0.1): model can move far from SFT checkpoint.
+  # High beta (0.5+): model stays close to SFT checkpoint.
+  # Start at 0.1. If the model collapses (all outputs same), increase beta.
+
+  loss_type: "sigmoid"       # Standard DPO loss (vs "hinge" or "ipo")
+  max_prompt_length: 256     # Tokens for the input prompt
+  max_length:        512     # Total tokens (prompt + completion)
+
+# ── Training Arguments ────────────────────────────────────────────────────────
+training:
+  num_train_epochs:               1       # DPO needs fewer epochs than SFT
+  per_device_train_batch_size:    2
+  gradient_accumulation_steps:    8       # Effective batch = 16
+  learning_rate:                  5.0e-5  # Lower than SFT — fine adjustments only
+  lr_scheduler_type:              "cosine"
+  warmup_ratio:                   0.1
+  weight_decay:                   0.01
+  max_grad_norm:                  1.0
+  bf16:                           true
+  gradient_checkpointing:         true
+  logging_steps:                  10
+  eval_steps:                     50
+  save_steps:                     50
+  save_total_limit:               2
+  load_best_model_at_end:         true
+  metric_for_best_model:          "eval_loss"
+  report_to:                      "none"

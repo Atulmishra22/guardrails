@@ -1,0 +1,90 @@
+# ── data.yaml ─────────────────────────────────────────────────────────────────
+# Controls everything about dataset generation and structure.
+# Edit this file to add new categories or mask types — no code changes needed.
+
+# ── Dataset paths ─────────────────────────────────────────────────────────────
+paths:
+  raw:         data/raw/
+  generated:   data/generated/
+  processed:   data/processed/
+  preferences: data/preferences/
+  evaluation:  data/evaluation/eval_independent.jsonl
+
+# ── Scale targets ─────────────────────────────────────────────────────────────
+dataset:
+  seed_size:     500        # Generate this many first. MANUALLY REVIEW before scaling.
+  target_size:   10000      # Scale to this after manual review passes.
+  eval_size:     400        # Independent eval set size (300–500 range).
+  train_split:   0.95       # 95% train, 5% held-out validation within training data.
+
+# ── Safety taxonomy (16 categories) ───────────────────────────────────────────
+# Add new categories here — validators.py reads this list automatically.
+taxonomy:
+  - benign
+  - self_harm
+  - violence
+  - sexual_content
+  - child_safety
+  - cyber_abuse
+  - fraud
+  - privacy
+  - illegal_activity
+  - weapons
+  - hate
+  - harassment
+  - extremism
+  - regulated_goods
+  - prompt_injection
+  - other
+
+# ── Decisions ─────────────────────────────────────────────────────────────────
+decisions:
+  - ALLOW
+  - BLOCK
+  - SANITIZE
+
+# ── Risk levels ───────────────────────────────────────────────────────────────
+risk_levels:
+  - low
+  - medium
+  - high
+
+# ── PII mask types ────────────────────────────────────────────────────────────
+# These become the [MASKED_*] tokens in the output.
+mask_types:
+  - NAME          # Full names, usernames
+  - PII           # SSN, national ID, passport numbers
+  - EMAIL         # Email addresses
+  - PHONE         # Phone numbers
+  - ADDRESS       # Physical addresses, zip codes
+  - CREDENTIAL    # API keys, passwords, tokens, secrets
+  - FINANCIAL     # Bank accounts, card numbers, IBAN
+  - MEDICAL       # Medical record IDs, diagnoses, prescriptions
+  - HARM          # Harmful instruction spans → always triggers BLOCK
+
+# ── Difficulty tiers and their target share of the dataset ────────────────────
+# Weights must sum to 1.0
+tiers:
+  obvious:      0.20   # Clear-cut safe or unsafe
+  ambiguous:    0.20   # Vague intent
+  dual_use:     0.20   # Same topic, legit or harmful by context
+  adversarial:  0.25   # Jailbreaks, encoding, obfuscation, multilingual
+  borderline:   0.15   # Genuinely hard ALLOW/BLOCK calls
+
+# ── Class balance targets (ALLOW vs BLOCK vs SANITIZE) ────────────────────────
+# Imbalance causes the model to over-predict the majority class.
+class_balance:
+  ALLOW:    0.40
+  BLOCK:    0.30
+  SANITIZE: 0.30
+
+# ── Teacher API settings ──────────────────────────────────────────────────────
+teacher:
+  default_model:      "gemini-1.5-pro"   # Primary teacher
+  eval_model:         "claude-3-5-sonnet" # Different model for independent eval set
+  temperature:        0.7                 # > 0 for self-consistency sampling
+  self_consistency_k: 3                   # Number of samples for majority vote
+  max_tokens:         512
+  batch_size:         10                  # Concurrent API calls
+  retry_attempts:     3
+  retry_delay_s:      2.0

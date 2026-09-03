@@ -1,0 +1,64 @@
+# ── sft.yaml ──────────────────────────────────────────────────────────────────
+# Controls Supervised Fine-Tuning (SFT) of Qwen2.5-1.5B-Instruct.
+# All values here are tuned for Kaggle T4 (16GB VRAM).
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  # Fallback if VRAM is tight:
+  # name: "Qwen/Qwen2.5-0.5B-Instruct"
+
+# ── 4-bit Quantization (BitsAndBytes) ────────────────────────────────────────
+# This is what lets a 1.5B model fit on a 16GB GPU.
+# Concept explained in: docs/05_quantization.md
+quantization:
+  load_in_4bit:               true
+  bnb_4bit_quant_type:        "nf4"       # Normal Float 4 — best for LLMs
+  bnb_4bit_use_double_quant:  true        # Quantize the quant constants too (saves ~0.4GB)
+  bnb_4bit_compute_dtype:     "bfloat16"  # Compute in bf16, store in 4-bit
+
+# ── LoRA / QLoRA Configuration ────────────────────────────────────────────────
+# Concept explained in: docs/01_what_is_lora.md
+lora:
+  r:              16          # Rank — higher = more capacity, more VRAM. Start with 16.
+  lora_alpha:     32          # Scaling factor. Rule of thumb: alpha = 2 * r
+  lora_dropout:   0.05        # Small dropout for regularization
+  bias:           "none"      # Don't add bias terms to LoRA layers
+  task_type:      "CAUSAL_LM"
+  target_modules:             # Apply LoRA to these attention layers
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+# ── Training Arguments ────────────────────────────────────────────────────────
+training:
+  output_dir:               "models/guardrail-v1-sft"
+  num_train_epochs:         3
+  per_device_train_batch_size:  2       # Small batch to fit T4 VRAM
+  per_device_eval_batch_size:   4
+  gradient_accumulation_steps:  8       # Effective batch = 2 * 8 = 16
+  gradient_checkpointing:       true    # Trade compute for VRAM
+  learning_rate:                2.0e-4
+  lr_scheduler_type:            "cosine"
+  warmup_ratio:                 0.05    # 5% of steps used for warmup
+  weight_decay:                 0.01
+  max_grad_norm:                1.0     # Gradient clipping
+  fp16:                         false
+  bf16:                         true    # bf16 mixed precision (T4 supports this)
+  logging_steps:                10
+  eval_steps:                   100
+  save_steps:                   100
+  save_total_limit:             2       # Keep only last 2 checkpoints (disk space)
+  load_best_model_at_end:       true
+  metric_for_best_model:        "eval_loss"
+  report_to:                    "none"  # Set to "wandb" if you want experiment tracking
+
+# ── SFT-specific ──────────────────────────────────────────────────────────────
+sft:
+  max_seq_length:   512       # Input + output. JSON output is ~150 tokens max.
+  dataset_text_field: "text"  # Field name in the formatted dataset
+  packing:          false     # Don't pack sequences — we need exact boundaries for masking
