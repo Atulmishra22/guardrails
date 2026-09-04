@@ -391,11 +391,11 @@ def print_balance_report(report: BalanceReport) -> None:
     for tier, count in sorted(report.tier_counts.items()):
         print(f"  {tier:12s}: {count}")
     if report.imbalance_warnings:
-        print("\n⚠️  Imbalance warnings:")
+        print("\nWARNING — Imbalance detected:")
         for w in report.imbalance_warnings:
             print(f"   {w}")
     else:
-        print("\n✅ Class balance looks good.")
+        print("\nClass balance within tolerance.")
 
 
 # ── Part 2: Near-duplicate detection ──────────────────────────────────────────
