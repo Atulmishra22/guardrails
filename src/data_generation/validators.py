@@ -295,3 +295,187 @@ def validate_jsonl_file(
                 report.warnings += len(all_warnings)
 
     return report
+
+
+# ── Part 2: Class balance analysis ────────────────────────────────────────────
+
+from collections import Counter  # noqa: E402
+
+
+@dataclass
+class BalanceReport:
+    """
+    Summary of class distribution in a JSONL dataset.
+
+    Why this matters:
+      If 80% of examples are ALLOW, the model learns to predict ALLOW for
+      everything and gets 80% accuracy — but completely fails on BLOCK cases.
+    """
+    total:              int
+    decision_counts:    dict[str, int]
+    category_counts:    dict[str, int]
+    tier_counts:        dict[str, int]
+    imbalance_warnings: list[str]
+
+    @property
+    def decision_fractions(self) -> dict[str, float]:
+        return {k: v / self.total for k, v in self.decision_counts.items()}
+
+
+def check_class_balance(
+    path: Path,
+    target_fractions: dict[str, float] | None = None,
+    tolerance: float = 0.10,
+) -> BalanceReport:
+    """
+    Analyze class distribution and warn on imbalances vs target fractions.
+
+    Default targets (from configs/data.yaml):
+        ALLOW=0.40, BLOCK=0.30, SANITIZE=0.30
+    """
+    if target_fractions is None:
+        target_fractions = {"ALLOW": 0.40, "BLOCK": 0.30, "SANITIZE": 0.30}
+
+    decision_counts: Counter = Counter()
+    category_counts: Counter = Counter()
+    tier_counts:     Counter = Counter()
+    total = 0
+
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total += 1
+            decision_counts[record.get("decision", "UNKNOWN")] += 1
+            category_counts[record.get("category", "UNKNOWN")] += 1
+            tier_counts[record.get("tier", "UNKNOWN")]         += 1
+
+    warnings: list[str] = []
+    if total > 0:
+        for cls, target in target_fractions.items():
+            actual = decision_counts.get(cls, 0) / total
+            if abs(actual - target) > tolerance:
+                warnings.append(
+                    f"Class '{cls}': target={target:.0%}  actual={actual:.0%}  "
+                    f"diff={abs(actual-target):.0%} > tolerance={tolerance:.0%}"
+                )
+
+    return BalanceReport(
+        total=total,
+        decision_counts=dict(decision_counts),
+        category_counts=dict(category_counts),
+        tier_counts=dict(tier_counts),
+        imbalance_warnings=warnings,
+    )
+
+
+def print_balance_report(report: BalanceReport) -> None:
+    """Pretty-print a BalanceReport to stdout."""
+    print(f"\n{'='*52}")
+    print(f"  Dataset balance report   (n={report.total})")
+    print(f"{'='*52}")
+    print("\nDecision distribution:")
+    for decision, count in sorted(report.decision_counts.items()):
+        frac = count / report.total if report.total else 0
+        bar  = "█" * int(frac * 30)
+        print(f"  {decision:10s}: {count:5d}  {frac:.1%}  {bar}")
+    print("\nTop 10 categories:")
+    for cat, count in Counter(report.category_counts).most_common(10):
+        print(f"  {cat:20s}: {count}")
+    print("\nTier distribution:")
+    for tier, count in sorted(report.tier_counts.items()):
+        print(f"  {tier:12s}: {count}")
+    if report.imbalance_warnings:
+        print("\n⚠️  Imbalance warnings:")
+        for w in report.imbalance_warnings:
+            print(f"   {w}")
+    else:
+        print("\n✅ Class balance looks good.")
+
+
+# ── Part 2: Near-duplicate detection ──────────────────────────────────────────
+
+def _shingle(text: str, k: int = 3) -> set[str]:
+    """Return k-character shingles for Jaccard similarity estimation."""
+    text = text.lower().strip()
+    return {text[i: i + k] for i in range(len(text) - k + 1)}
+
+
+def find_near_duplicates(
+    path: Path,
+    similarity_threshold: float = 0.85,
+) -> list[tuple[int, int, float]]:
+    """
+    Flag near-duplicate records using Jaccard similarity over 3-character shingles.
+    Only run on the seed set (≤500 examples) — O(n²) complexity.
+
+    Why: Near-duplicates bias the model to memorize instead of generalize,
+    and inflate evaluation metrics by leaking into the train set.
+
+    Returns: list of (line_i, line_j, similarity) for flagged pairs.
+    """
+    texts: list[str] = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                texts.append(record.get("text", ""))
+            except json.JSONDecodeError:
+                texts.append("")
+
+    shingles = [_shingle(t) for t in texts]
+    duplicates: list[tuple[int, int, float]] = []
+
+    for i in range(len(shingles)):
+        for j in range(i + 1, len(shingles)):
+            a, b = shingles[i], shingles[j]
+            if not a or not b:
+                continue
+            jaccard = len(a & b) / len(a | b)
+            if jaccard >= similarity_threshold:
+                duplicates.append((i + 1, j + 1, round(jaccard, 3)))
+
+    return duplicates
+
+
+def detect_label_contradictions(path: Path) -> list[dict]:
+    """
+    Find examples with identical text but conflicting decision labels.
+    Contradictions produce conflicting training signal and must be removed.
+
+    Returns: list of {text_snippet, lines, decisions} dicts.
+    """
+    seen: dict[str, list[tuple[int, str]]] = {}
+
+    with open(path, encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record   = json.loads(line)
+                text     = record.get("text", "").strip().lower()
+                decision = record.get("decision", "")
+                if text:
+                    seen.setdefault(text, []).append((line_no, decision))
+            except json.JSONDecodeError:
+                continue
+
+    contradictions = []
+    for text, entries in seen.items():
+        if len({d for _, d in entries}) > 1:
+            contradictions.append({
+                "text_snippet": text[:80],
+                "lines":        [ln for ln, _ in entries],
+                "decisions":    list({d for _, d in entries}),
+            })
+
+    return contradictions
