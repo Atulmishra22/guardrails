@@ -1,4 +1,4 @@
-# 📖 Concept: 4-Bit Quantization & BitsAndBytes
+# 4-Bit Quantization and BitsAndBytes
 
 > Read this before touching `sft.yaml`'s quantization section or any model loading code.
 
@@ -15,7 +15,7 @@ By default, each weight is stored as a **32-bit float** (`float32`):
 + optimizer states (Adam) × 2       = 12 GB more during training
 + activations + gradients           = another 6–10 GB
 ────────────────────────────────────────────────────────
-Total needed for full fine-tuning   ≈ 24–28 GB  ❌ won't fit on T4 (16GB)
+Total needed for full fine-tuning   ≈ 24–28 GB  [does not fit on T4 (16GB)]
 ```
 
 We need to **shrink the weights** without destroying the model's knowledge.
@@ -118,9 +118,9 @@ For `Qwen2.5-1.5B-Instruct`:
 
 | Setup | VRAM for weights | Can train on T4? |
 |---|---|---|
-| Full float32 | ~6.0 GB | ❌ (after optimizer states: ~24 GB) |
-| float16 | ~3.0 GB | ⚠️ (tight, no room for gradients) |
-| 4-bit NF4 | ~0.9 GB | ✅ (with plenty of room for LoRA + activations) |
+| Full float32 | ~6.0 GB | No — optimizer states push total to ~24 GB |
+| float16 | ~3.0 GB | Marginal — no headroom for gradients |
+| 4-bit NF4 | ~0.9 GB | Yes — sufficient room for LoRA and activations |
 
 This is why 4-bit quantization is the **key** that unlocks free Kaggle GPU training.
 
@@ -176,7 +176,7 @@ Compute dtype = bfloat16: math done in bf16, result accurate
     ↓
 1.5B model fits in ~1 GB VRAM instead of 6 GB
     ↓
-Room for LoRA adapters + optimizer states + activations on 16GB T4 ✅
+Room for LoRA adapters + optimizer states + activations on 16GB T4
 ```
 
 **Next concept to read:** [`docs/01_what_is_lora.md`](01_what_is_lora.md) — LoRA and QLoRA explained.

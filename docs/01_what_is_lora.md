@@ -1,4 +1,4 @@
-# 📖 Concept: LoRA and QLoRA
+# LoRA and QLoRA
 
 > Read this before writing `src/training/sft.py`.
 > Prerequisite: [`docs/05_quantization.md`](05_quantization.md)
@@ -14,7 +14,7 @@ Qwen2.5-1.5B has ~1.5 billion parameters
 Full fine-tuning = update all 1.5B weights
                  = store gradients for all 1.5B weights
                  = store optimizer states for all 1.5B weights (Adam = 2x)
-                 ≈ 4.5B floats just for optimizer states = ~18 GB ❌
+                 ≈ 4.5B floats just for optimizer states = ~18 GB  [exceeds T4 limit]
 ```
 
 On a 16GB Kaggle T4, this is impossible. We need a smarter approach.
@@ -152,7 +152,7 @@ VRAM breakdown for Qwen2.5-1.5B with QLoRA (r=16):
   Activations + gradients:     ~4.0  GB  (with gradient checkpointing)
   Tokenizer + misc:            ~0.5  GB
   ─────────────────────────────────────
-  Total:                       ~5.5  GB  ✅ fits easily on 16GB T4
+  Total:                       ~5.5  GB  — fits on 16GB T4
 ```
 
 This is the magic — you get full fine-tuning quality at a fraction of the cost.

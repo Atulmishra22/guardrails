@@ -1,4 +1,4 @@
-# 📖 Concept: Tokenization and Token-Level Span Offsets
+# Tokenization and Token-Level Span Offsets
 
 > Read this before writing `src/data_generation/validators.py`.
 > This explains why we use **token-level** offsets for PII spans (not character-level).
@@ -209,10 +209,10 @@ Text → Tokenizer → [token_0, token_1, token_2, ...]
 Span = { token_start, token_end, type, original }
 
 Why token-level:
-  ✅ Native to the model — no conversion needed
-  ✅ Stable after masking (no character offset shifts)
-  ✅ Handles multi-byte characters and special chars naturally
-  ✅ Adversarial inputs (l33tspeak, encoding) stay in token space
+  - Native to the model — no conversion needed
+  - Stable after masking (no character offset shifts)
+  - Handles multi-byte characters and special chars naturally
+  - Adversarial inputs (l33tspeak, encoding) stay in token space
 
 Key rule:
   token_end is EXCLUSIVE (like Python slicing)
