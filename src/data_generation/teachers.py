@@ -109,20 +109,25 @@ class TeacherClient:
     """
 
     SUPPORTED_MODELS = {
-        "gemini-1.5-pro":        "google",
-        "gemini-1.5-flash":      "google",
+        "gemini-1.5-pro":             "google",
+        "gemini-1.5-flash":           "google",
+        "gemini-2.5-flash":           "google",
         "claude-3-5-sonnet-20241022": "anthropic",
         "claude-3-haiku-20240307":    "anthropic",
+        "gpt-4o-mini":                "openai_compatible",
+        "gpt-4o":                     "openai_compatible",
+        "aipipe":                     "openai_compatible",
     }
 
     def __init__(
         self,
-        model:        str   = "gemini-1.5-pro",
+        model:        str   = "gemini-2.5-flash",
         temperature:  float = 0.7,
-        k:            int   = 3,      # Self-consistency samples
+        k:            int   = 1,      # Default k=1 for fast/quota-friendly generation
         max_tokens:   int   = 512,
-        batch_size:   int   = 10,
+        batch_size:   int   = 5,      # Conservative concurrency for free tiers
         retry_attempts: int = 3,
+        base_url:     str | None = None,
     ):
         self.model        = model
         self.temperature  = temperature
@@ -130,7 +135,8 @@ class TeacherClient:
         self.max_tokens   = max_tokens
         self.batch_size   = batch_size
         self.retry_attempts = retry_attempts
-        self._provider    = self.SUPPORTED_MODELS.get(model, "google")
+        self.base_url     = base_url
+        self._provider    = self.SUPPORTED_MODELS.get(model, "google" if "gemini" in model else "openai_compatible")
         self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
@@ -148,7 +154,9 @@ class TeacherClient:
         """Call the teacher API once. Returns the raw string response."""
         if self._provider == "google":
             return await self._call_gemini(user_text)
-        return await self._call_claude(user_text)
+        elif self._provider == "anthropic":
+            return await self._call_claude(user_text)
+        return await self._call_openai_compatible(user_text)
 
     async def _call_gemini(self, user_text: str) -> str:
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -197,6 +205,40 @@ class TeacherClient:
             resp.raise_for_status()
             data = await resp.json()
             return data["content"][0]["text"]
+
+    async def _call_openai_compatible(self, user_text: str) -> str:
+        api_key = (
+            os.environ.get("AIPIPE_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+        )
+        if not api_key:
+            raise ValueError(
+                "Neither AIPIPE_API_KEY nor OPENAI_API_KEY is set. Please add it to your .env file."
+            )
+        base_url = (
+            self.base_url
+            or os.environ.get("OPENAI_BASE_URL")
+            or "https://aipipe.org/openai/v1"
+        )
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        }
+        payload = {
+            "model": self.model if self.model != "aipipe" else "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_text},
+            ],
+            "temperature": self.temperature,
+            "max_tokens":  self.max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        async with self._session.post(url, json=payload, headers=headers) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            return data["choices"][0]["message"]["content"]
 
     # ── Self-consistency voting ────────────────────────────────────────────────
 

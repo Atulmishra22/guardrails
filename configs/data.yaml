@@ -80,11 +80,11 @@ class_balance:
 
 # ── Teacher API settings ──────────────────────────────────────────────────────
 teacher:
-  default_model:      "gemini-1.5-pro"   # Primary teacher
+  default_model:      "gemini-2.5-flash" # Primary teacher (fast & free-tier friendly)
   eval_model:         "claude-3-5-sonnet" # Different model for independent eval set
-  temperature:        0.7                 # > 0 for self-consistency sampling
-  self_consistency_k: 3                   # Number of samples for majority vote
+  temperature:        0.7                 # > 0 for diverse completions
+  self_consistency_k: 1                   # 1 sample per prompt for seed generation
   max_tokens:         512
-  batch_size:         10                  # Concurrent API calls
+  batch_size:         5                   # Conservative concurrency for free tiers
   retry_attempts:     3
   retry_delay_s:      2.0

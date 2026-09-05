@@ -43,20 +43,24 @@ def parse_args() -> argparse.Namespace:
         help="Output JSONL file path. E.g. data/generated/seed.jsonl",
     )
     parser.add_argument(
-        "--model", type=str, default="gemini-1.5-pro",
-        help="Teacher model name. Default: gemini-1.5-pro",
+        "--model", type=str, default="gemini-2.5-flash",
+        help="Teacher model name. Default: gemini-2.5-flash (fast & free-tier friendly). Also supports gemini-1.5-flash, gpt-4o-mini, aipipe.",
     )
     parser.add_argument(
         "--temperature", type=float, default=0.7,
-        help="Sampling temperature for teacher API (>0 for self-consistency). Default: 0.7",
+        help="Sampling temperature for teacher API. Default: 0.7",
     )
     parser.add_argument(
-        "--k", type=int, default=3,
-        help="Number of self-consistency samples per prompt. Default: 3",
+        "--k", type=int, default=1,
+        help="Number of self-consistency samples per prompt. Default: 1 (fast/quota-efficient).",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=10,
-        help="Concurrent API calls per batch. Default: 10",
+        "--batch-size", type=int, default=5,
+        help="Concurrent API calls per batch. Default: 5 (safe for free-tier RPM).",
+    )
+    parser.add_argument(
+        "--base-url", type=str, default=None,
+        help="Custom OpenAI-compatible base URL (e.g. for AIPipe, OpenRouter, Groq).",
     )
     parser.add_argument(
         "--seed", type=int, default=42,
@@ -88,6 +92,7 @@ async def run(args: argparse.Namespace) -> None:
         temperature=args.temperature,
         k=args.k,
         batch_size=args.batch_size,
+        base_url=args.base_url,
     ) as client:
         examples = await client.label_batch(specs, progress_cb=progress)
 
