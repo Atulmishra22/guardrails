@@ -15,6 +15,7 @@ data/preferences/
 # ── Environment and secrets ───────────────────────────────────────────────────
 .env
 .env.*
+!.env.example
 *.key
 
 # ── Python cache ──────────────────────────────────────────────────────────────
