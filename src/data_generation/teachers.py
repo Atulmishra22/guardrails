@@ -17,7 +17,7 @@ import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
 
 import aiohttp
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -25,6 +25,26 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from .generators import PromptSpec
 
 logger = logging.getLogger(__name__)
+
+
+def _load_dotenv_if_present() -> None:
+    """Load key-value pairs from .env if present and not already in environment."""
+    for candidate in (Path(".env"), Path(__file__).resolve().parents[2] / ".env"):
+        if candidate.is_file():
+            with open(candidate, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ and v:
+                        os.environ[k] = v
+            break
+
+
+_load_dotenv_if_present()
 
 # ── Output schema ──────────────────────────────────────────────────────────────
 
@@ -131,7 +151,11 @@ class TeacherClient:
         return await self._call_claude(user_text)
 
     async def _call_gemini(self, user_text: str) -> str:
-        api_key = os.environ["GEMINI_API_KEY"]
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is not set. Please add it to your .env file or environment variables."
+            )
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model}:generateContent?key={api_key}"
@@ -151,7 +175,11 @@ class TeacherClient:
             return data["candidates"][0]["content"]["parts"][0]["text"]
 
     async def _call_claude(self, user_text: str) -> str:
-        api_key = os.environ["ANTHROPIC_API_KEY"]
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not set. Please add it to your .env file or environment variables."
+            )
         url = "https://api.anthropic.com/v1/messages"
         headers = {
             "x-api-key":         api_key,
