@@ -63,6 +63,10 @@ def parse_args() -> argparse.Namespace:
         help="Custom OpenAI-compatible base URL (e.g. for AIPipe, OpenRouter, Groq).",
     )
     parser.add_argument(
+        "--provider", type=str, default=None,
+        help="Explicit provider: 'google', 'anthropic', 'aipipe', or 'openai'. Auto-detected if omitted.",
+    )
+    parser.add_argument(
         "--seed", type=int, default=42,
         help="Random seed for prompt generator reproducibility. Default: 42",
     )
@@ -93,6 +97,7 @@ async def run(args: argparse.Namespace) -> None:
         k=args.k,
         batch_size=args.batch_size,
         base_url=args.base_url,
+        provider=args.provider,
     ) as client:
         examples = await client.label_batch(specs, progress_cb=progress)
 

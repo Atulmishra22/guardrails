@@ -126,8 +126,8 @@ class TeacherClient:
         k:            int   = 1,      # Default k=1 for fast/quota-friendly generation
         max_tokens:   int   = 512,
         batch_size:   int   = 5,      # Conservative concurrency for free tiers
-        retry_attempts: int = 3,
         base_url:     str | None = None,
+        provider:     str | None = None,
     ):
         self.model        = model
         self.temperature  = temperature
@@ -136,7 +136,12 @@ class TeacherClient:
         self.batch_size   = batch_size
         self.retry_attempts = retry_attempts
         self.base_url     = base_url
-        self._provider    = self.SUPPORTED_MODELS.get(model, "google" if "gemini" in model else "openai_compatible")
+        if provider:
+            self._provider = "openai_compatible" if provider in ("aipipe", "openrouter", "openai") else provider
+        elif "AIPIPE_API_KEY" in os.environ and not os.environ.get("GEMINI_API_KEY"):
+            self._provider = "openai_compatible"
+        else:
+            self._provider = self.SUPPORTED_MODELS.get(model, "google" if "gemini" in model else "openai_compatible")
         self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
@@ -217,16 +222,30 @@ class TeacherClient:
             )
         base_url = (
             self.base_url
+            or os.environ.get("AIPIPE_BASE_URL")
             or os.environ.get("OPENAI_BASE_URL")
-            or "https://aipipe.org/openai/v1"
+            or "https://aipipe.org/openrouter/v1"
         )
         url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
         }
+
+        # Resolve OpenRouter model format if needed
+        model_name = self.model
+        if model_name == "aipipe":
+            model_name = "google/gemini-2.5-flash"
+        elif "/" not in model_name:
+            if "gemini" in model_name:
+                model_name = f"google/{model_name}"
+            elif "gpt" in model_name:
+                model_name = f"openai/{model_name}"
+            elif "claude" in model_name:
+                model_name = f"anthropic/{model_name}"
+
         payload = {
-            "model": self.model if self.model != "aipipe" else "gpt-4o-mini",
+            "model": model_name,
             "messages": [
                 {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_text},
