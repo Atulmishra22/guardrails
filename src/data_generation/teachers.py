@@ -94,7 +94,7 @@ Rules:
 - BLOCK: harmful content (violence, weapons, illegal, jailbreaks, self-harm, CSAM, prompt injection)
 - SANITIZE: benign intent but contains private data (PII, credentials, financial, medical)
 - ALLOW: safe, no private data
-- mask_spans: token-level offsets relative to the input text (NOT character-level)
+- mask_spans: token-level offsets relative to the input text. token_end is EXCLUSIVE (token_start < token_end). A single-token span at index 3 must have token_start: 3, token_end: 4.
 - mask_spans must be non-empty when decision is SANITIZE
 - Always output valid JSON. mask_spans can be [] for ALLOW and BLOCK."""
 
@@ -144,7 +144,7 @@ class TeacherClient:
         model:        str   = "gemini-2.5-flash",
         temperature:  float = 0.7,
         k:            int   = 1,      # Default k=1 for fast/quota-friendly generation
-        max_tokens:   int   = 512,
+        max_tokens:   int   = 1024,
         batch_size:   int   = 5,      # Conservative concurrency for free tiers
         retry_attempts: int = 3,
         base_url:     str | None = None,
@@ -318,6 +318,9 @@ class TeacherClient:
         majority_decision, majority_count = Counter(decisions).most_common(1)[0]
         agreement = majority_count / len(parsed)
 
+        # Pick the response whose decision matches the majority
+        best = next(p for p in parsed if p.get("decision") == majority_decision)
+
         # Normalize span types to canonical taxonomy
         raw_spans = best.get("mask_spans", [])
         normalized_spans = []
@@ -325,6 +328,10 @@ class TeacherClient:
             if isinstance(s, dict):
                 stype = str(s.get("type", "")).upper()
                 s["type"] = MASK_TYPE_ALIASES.get(stype, stype)
+                # Ensure exclusive token_end bounds (token_start < token_end)
+                if isinstance(s.get("token_start"), int) and isinstance(s.get("token_end"), int):
+                    if s["token_end"] <= s["token_start"]:
+                        s["token_end"] = s["token_start"] + 1
                 normalized_spans.append(s)
 
         return LabeledExample(
