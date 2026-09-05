@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -53,6 +54,25 @@ VALID_RISK_LEVELS = {"low", "medium", "high"}
 VALID_MASK_TYPES  = {
     "NAME", "PII", "EMAIL", "PHONE", "ADDRESS",
     "CREDENTIAL", "FINANCIAL", "MEDICAL", "HARM",
+}
+
+MASK_TYPE_ALIASES = {
+    "PHONE_NUMBER": "PHONE",
+    "TELEPHONE": "PHONE",
+    "PHONENUMBER": "PHONE",
+    "CREDIT_CARD": "FINANCIAL",
+    "CREDITCARD": "FINANCIAL",
+    "BANK_ACCOUNT": "FINANCIAL",
+    "API_KEY": "CREDENTIAL",
+    "PASSWORD": "CREDENTIAL",
+    "SECRET": "CREDENTIAL",
+    "TOKEN": "CREDENTIAL",
+    "SSN": "PII",
+    "PASSPORT": "PII",
+    "ID": "PII",
+    "NATIONAL_ID": "PII",
+    "PERSON": "NAME",
+    "LOCATION": "ADDRESS",
 }
 
 # ── System prompt sent to the teacher model ────────────────────────────────────
@@ -126,6 +146,7 @@ class TeacherClient:
         k:            int   = 1,      # Default k=1 for fast/quota-friendly generation
         max_tokens:   int   = 512,
         batch_size:   int   = 5,      # Conservative concurrency for free tiers
+        retry_attempts: int = 3,
         base_url:     str | None = None,
         provider:     str | None = None,
     ):
@@ -255,7 +276,10 @@ class TeacherClient:
             "response_format": {"type": "json_object"},
         }
         async with self._session.post(url, json=payload, headers=headers) as resp:
-            resp.raise_for_status()
+            if resp.status != 200:
+                err_body = await resp.text()
+                logger.error("AIPipe returned status %d for model %s at %s: %s", resp.status, model_name, url, err_body)
+                resp.raise_for_status()
             data = await resp.json()
             return data["choices"][0]["message"]["content"]
 
@@ -294,8 +318,14 @@ class TeacherClient:
         majority_decision, majority_count = Counter(decisions).most_common(1)[0]
         agreement = majority_count / len(parsed)
 
-        # Pick the response whose decision matches the majority
-        best = next(p for p in parsed if p.get("decision") == majority_decision)
+        # Normalize span types to canonical taxonomy
+        raw_spans = best.get("mask_spans", [])
+        normalized_spans = []
+        for s in raw_spans:
+            if isinstance(s, dict):
+                stype = str(s.get("type", "")).upper()
+                s["type"] = MASK_TYPE_ALIASES.get(stype, stype)
+                normalized_spans.append(s)
 
         return LabeledExample(
             text=spec.text,
@@ -304,7 +334,7 @@ class TeacherClient:
             risk_level=best.get("risk_level", "medium"),
             confidence=round(float(best.get("confidence", 0.5)) * agreement, 3),
             masked_input=best.get("masked_input", spec.text),
-            mask_spans=best.get("mask_spans", []),
+            mask_spans=normalized_spans,
             tier=spec.tier,
             raw_responses=raw_responses,
             agreement=agreement,
