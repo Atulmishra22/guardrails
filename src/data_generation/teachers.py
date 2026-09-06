@@ -145,8 +145,9 @@ class TeacherClient:
         temperature:  float = 0.7,
         k:            int   = 1,      # Default k=1 for fast/quota-friendly generation
         max_tokens:   int   = 1024,
-        batch_size:   int   = 5,      # Conservative concurrency for free tiers
-        retry_attempts: int = 3,
+        batch_size:   int   = 2,      # 2 concurrent requests for free tier safety
+        retry_attempts: int = 5,
+        delay_between_batches: float = 3.0,
         base_url:     str | None = None,
         provider:     str | None = None,
     ):
@@ -156,6 +157,7 @@ class TeacherClient:
         self.max_tokens   = max_tokens
         self.batch_size   = batch_size
         self.retry_attempts = retry_attempts
+        self.delay_between_batches = delay_between_batches
         self.base_url     = base_url
         if provider:
             self._provider = "openai_compatible" if provider in ("aipipe", "openrouter", "openai") else provider
@@ -175,7 +177,7 @@ class TeacherClient:
 
     # ── Single example labeling ────────────────────────────────────────────────
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=4, max=30))
     async def _call_api(self, user_text: str) -> str:
         """Call the teacher API once. Returns the raw string response."""
         if self._provider == "google":
@@ -204,7 +206,10 @@ class TeacherClient:
             },
         }
         async with self._session.post(url, json=payload) as resp:
-            resp.raise_for_status()
+            if resp.status != 200:
+                err_text = await resp.text()
+                logger.warning("Gemini API status %d: %s", resp.status, err_text[:200])
+                resp.raise_for_status()
             data = await resp.json()
             return data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -247,7 +252,11 @@ class TeacherClient:
             or os.environ.get("OPENAI_BASE_URL")
             or "https://aipipe.org/openrouter/v1"
         )
-        url = f"{base_url.rstrip('/')}/chat/completions"
+        base_clean = base_url.rstrip('/')
+        if base_clean.endswith("/chat/completions"):
+            url = base_clean
+        else:
+            url = f"{base_clean}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
@@ -378,7 +387,7 @@ class TeacherClient:
 
             # Polite rate-limit pause between batches
             if i + self.batch_size < total:
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(self.delay_between_batches)
 
         return examples
 
